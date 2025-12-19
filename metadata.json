@@ -1,0 +1,5 @@
+{
+  "name": "SmartClaim AI",
+  "description": "A RAG-powered intelligent insurance policy retrieval and claim suggestion system based on the research proposal.",
+  "requestFramePermissions": []
+}
