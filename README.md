@@ -16,6 +16,7 @@ View your app in AI Studio: https://ai.studio/apps/drive/16M_CeCnHQE4VcbpFeacKWz
 1. Install dependencies:
    `npm install`
 2. Copy `.env.example` to `.env.local` and set the `GEMINI_API_KEY` to your Gemini API key.
+   - `.env.local` 不會被版本控制（`.gitignore` 規則 `*.local`），請自行建立。
 3. Start the backend proxy (keeps your API key on the server side):
    `npm run server`
 4. In another terminal, run the frontend:
