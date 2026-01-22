@@ -4,15 +4,6 @@ export enum ViewState {
   DEMO = 'DEMO'
 }
 
-export interface PolicyChunk {
-  id: string;
-  company: string;
-  policyName: string;
-  sectionTitle: string;
-  content: string;
-  type: 'Health' | 'Auto' | 'Life' | 'Accident';
-}
-
 export interface PdfPage {
   pageNumber: number;
   content: string;
@@ -32,7 +23,6 @@ export interface Message {
   id: string;
   role: 'user' | 'model';
   text: string;
-  retrievedChunks?: PolicyChunk[];
   guidance?: string[];
   structuredData?: StructuredResponse;
 }

@@ -2,60 +2,36 @@
 import { GoogleGenAI } from "@google/genai";
 import { StructuredResponse } from "../types";
 
-// ============================================================================
-// SECURITY NOTICE (資安與部署說明)
-// ============================================================================
-// 在純前端應用(Client-side Only)中，API Key 必定會暴露於瀏覽器環境。
-// 為了在部署後保護您的 API Key，請務必執行以下兩項措施之一：
-//
-// 1. [推薦] HTTP Referrer 限制 (最快)：
-//    請至 Google Cloud Console > APIs & Services > Credentials
-//    編輯您的 API Key，在 "Application restrictions" 選擇 "HTTP referrers (Web sites)"
-//    並加入您部署後的網域 (例如: https://your-app.netlify.app/*)。
-//
-// 2. [進階] 後端代理 (Proxy Mode)：
-//    將下方的 USE_PROXY 設為 true，並建立一個後端 API (如 Node.js/Python)，
-//    由後端保管 API Key 並轉發請求給 Google。
-// ============================================================================
-
-const USE_PROXY = false; // 部署時若有後端伺服器，請改為 true
-const PROXY_BASE_URL = '/api/gemini'; // 您的後端 API 路徑
-
+/**
+ * Configuration for API Key access.
+ * For production, consider using a backend proxy to hide the API KEY.
+ */
+const USE_PROXY = false; 
 const apiKey = process.env.API_KEY || '';
 
-// Helper to get client or proxy URL
 const getGenAIClient = () => {
-  if (USE_PROXY) {
-    return null; // Proxy mode doesn't need client-side SDK instance usually, or handles it differently
-  }
+  if (USE_PROXY) return null;
   if (!apiKey) {
     console.warn("API Key is missing. AI features will not work.");
     return null;
   }
-  // Initialize on demand to avoid global scope pollution
   return new GoogleGenAI({ apiKey });
 };
 
 type AnalysisMode = 'single' | 'multi' | 'general';
 
+/**
+ * Generates a summary for an uploaded policy document.
+ * Returns title, summary, highlights, and suggested questions.
+ */
 export const generatePolicySummary = async (text: string): Promise<{
   title: string;
   summary: string;
   highlights: string[];
   suggestedQuestions: string[];
 }> => {
-  // Logic branch for Proxy vs Direct SDK
   if (USE_PROXY) {
-    // Example of how you would call your backend in the future
-    /*
-    const response = await fetch(`${PROXY_BASE_URL}/summary`, {
-      method: 'POST',
-      body: JSON.stringify({ text }),
-      headers: { 'Content-Type': 'application/json' }
-    });
-    return response.json();
-    */
-    throw new Error("Proxy mode enabled but backend not implemented.");
+    throw new Error("Proxy mode not implemented.");
   }
 
   const ai = getGenAIClient();
@@ -68,7 +44,7 @@ export const generatePolicySummary = async (text: string): Promise<{
     };
   }
 
-  // Limit text length for summary
+  // Limit text length to avoid token limits (adjust as needed for the model)
   const truncatedText = text.substring(0, 15000);
 
   const prompt = `
@@ -103,11 +79,10 @@ export const generatePolicySummary = async (text: string): Promise<{
   } catch (error: any) {
     console.error("Summary Generation Error:", error);
     
-    // Handle Permission Denied (likely due to Referrer restrictions blocking localhost)
     if (error.message?.includes('403') || error.toString().includes('403')) {
        return {
         title: "存取被拒絕 (403)",
-        summary: "API Key 可能設定了網域限制(Referrer Restriction)，導致目前環境無法存取。請確認您的 Google Cloud Console 設定。",
+        summary: "API Key 可能設定了網域限制，導致目前環境無法存取。請確認您的 Google Cloud Console 設定。",
         highlights: [],
         suggestedQuestions: []
        }
@@ -122,6 +97,10 @@ export const generatePolicySummary = async (text: string): Promise<{
   }
 };
 
+/**
+ * Generates advice based on the user query and provided context (policy text).
+ * Handles structured output for checklist, key points, and clarification status.
+ */
 export const generateClaimAdvice = async (
   query: string,
   contextText: string = "",
@@ -129,8 +108,6 @@ export const generateClaimAdvice = async (
 ): Promise<{ text: string; guidance: string[]; structuredData?: StructuredResponse }> => {
   
   if (USE_PROXY) {
-     // Placeholder for Proxy implementation
-     // const response = await fetch(`${PROXY_BASE_URL}/chat`, ...);
      return { text: "Backend Proxy not configured.", guidance: [] };
   }
 
@@ -144,7 +121,6 @@ export const generateClaimAdvice = async (
 
   let systemInstruction = "";
 
-  // Set instructions based on mode
   if (mode === 'single') {
     systemInstruction = `你是一位專業的保險理賠助手 (SmartClaim AI)。
     使用者已上傳一份特定的保單文件 (PDF)。
@@ -165,7 +141,6 @@ export const generateClaimAdvice = async (
     若遇到需要具體條款才能判斷的問題（如：賠多少錢），請提醒使用者上傳保單以獲得精確分析。`;
   }
 
-  // Construct context display
   const finalContext = contextText ? `
     [參考文件內容 (Context)]:
     ${contextText.substring(0, 50000)} (為確保效能，內容可能經截斷)

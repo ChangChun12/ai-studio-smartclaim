@@ -1,13 +1,11 @@
 
 import { ResearchMetric } from './types';
 
-// Removed MOCK_POLICY_DB as we now use real "General Expert" AI knowledge or uploaded PDFs.
-
 export const RESEARCH_METRICS: ResearchMetric[] = [
   {
     label: "檢索準確率",
     value: "85%+",
-    description: "結合 RAG 與 LlamaIndex 的目標精確度"
+    description: "結合 RAG 技術的目標精確度"
   },
   {
     label: "節省時間",
