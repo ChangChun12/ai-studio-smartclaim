@@ -1,42 +1,21 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Message, UploadedDocument, UserProfile, ClientSummary } from '../types';
+import { Message, UploadedDocument } from '../types';
 import { generateClaimAdvice, generatePolicySummary } from '../services/geminiService';
 import { extractPdfData } from '../services/pdfService';
 import { SAMPLE_QUERIES } from '../constants';
-import { Send, FileText, CheckCircle2, Bot, User, Loader2, FilePlus, Layers, Calculator, Minimize2, EyeOff, Eye, Trash2, LayoutList, HelpCircle, AlertCircle, Sparkles, FileWarning, Briefcase, LogIn } from 'lucide-react';
+import { Send, FileText, CheckCircle2, Bot, User, Loader2, FilePlus, Layers, Calculator, Minimize2, EyeOff, Eye, Trash2, LayoutList, HelpCircle, AlertCircle, Sparkles, FileWarning } from 'lucide-react';
 
-interface ChatInterfaceProps {
-  user?: UserProfile | null;
-  agentModeClient?: ClientSummary; // If provided, the chat is in "Agent Mode" for this client
-}
-
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, agentModeClient }) => {
-  // Determine identity for UI and Logic
-  const isAgentMode = !!agentModeClient;
-  const isGuestMode = !user && !isAgentMode;
-  
-  // Persistence Key Logic
-  // 1. Agent Mode: Save to client's specific key (simulating database link)
-  // 2. User Mode: Save to user's email key
-  // 3. Guest Mode: Save to generic guest key
-  const storageKey = isAgentMode 
-    ? `smartclaim_data_${agentModeClient?.email}` 
-    : (user ? `smartclaim_data_${user.email}` : 'smartclaim_data_guest');
-
-  const displayName = isAgentMode 
-    ? `專員 (協助: ${agentModeClient?.name})` 
-    : (user ? user.name : '訪客');
+const ChatInterface: React.FC = () => {
+  // Persistence Key
+  const storageKey = 'smartclaim_data_v1';
 
   const DEFAULT_WELCOME_MESSAGE: Message = {
     id: 'welcome',
     role: 'model',
-    text: isAgentMode 
-      ? `👋 **專員您好，已連結客戶「${agentModeClient?.name}」的資料庫。**\n\n您可以使用此介面協助客戶分析保單，或上傳新文件。所有對話將自動歸檔至此客戶紀錄中。`
-      : `👋 **您好，${displayName}！我是您的 SmartClaim AI 理賠顧問。**\n\n我可以協助您解決保險相關的疑難雜症：\n\n🔹 **一般諮詢 (專業顧問)**：\n即使沒有保單，您也可以詢問保險法規、專有名詞解釋（如：既往症、除外責任）或理賠實務。\n\n🔹 **跨保單總管**：\n若您上傳了多份 PDF，我能在此模式下為您進行「綜合分析」，比較不同保單的理賠範圍。\n\n**現在，請直接提問，或點擊左下方按鈕上傳您的保單吧！** 🚀`
+    text: `👋 **您好！我是您的 SmartClaim AI 理賠顧問。**\n\n我可以協助您解決保險相關的疑難雜症：\n\n🔹 **一般諮詢 (專業顧問)**：\n即使沒有保單，您也可以詢問保險法規、專有名詞解釋（如：既往症、除外責任）或理賠實務。\n\n🔹 **跨保單總管**：\n若您上傳了多份 PDF，我能在此模式下為您進行「綜合分析」，比較不同保單的理賠範圍。\n\n**現在，請直接提問，或點擊左下方按鈕上傳您的保單吧！** 🚀`
   };
 
-  // Global messages for the "General Expert / Global Manager" mode
   const [globalMessages, setGlobalMessages] = useState<Message[]>([DEFAULT_WELCOME_MESSAGE]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -56,7 +35,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, agentModeClient }) 
 
   // --- Persistence Logic ---
 
-  // Load data on mount or user/client change
   useEffect(() => {
     const savedData = localStorage.getItem(storageKey);
 
@@ -73,14 +51,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, agentModeClient }) 
         setDocuments([]);
         setGlobalMessages([DEFAULT_WELCOME_MESSAGE]);
       }
-    } else {
-      // Reset if no data found for this key
-      setDocuments([]);
-      setGlobalMessages([DEFAULT_WELCOME_MESSAGE]);
     }
-  }, [storageKey]); // Re-run when storage key changes (e.g. switching clients or logging in)
+  }, []);
 
-  // Save data on change
   useEffect(() => {
     const docsToSave = documents.map(doc => ({
       ...doc,
@@ -97,17 +70,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, agentModeClient }) 
     } catch (e) {
       console.error("Storage quota exceeded or error", e);
     }
-  }, [documents, globalMessages, storageKey]);
+  }, [documents, globalMessages]);
 
   // --- End Persistence Logic ---
 
-  // Derived state: Current Active Document
   const activeDocument = documents.find(d => d.id === activeDocId) || null;
-
-  // Derived state: Messages to display based on context
   const displayMessages = activeDocument ? activeDocument.chatHistory : globalMessages;
-
-  // Derived state: Suggested queries
   const currentSuggestedQueries = activeDocument?.suggestedQuestions && activeDocument.suggestedQuestions.length > 0
     ? activeDocument.suggestedQuestions
     : SAMPLE_QUERIES;
@@ -290,22 +258,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, agentModeClient }) 
   return (
     <div className="flex flex-col lg:flex-row h-full bg-white font-sans text-base relative">
       
-      {/* Mode Indicators (Banners) */}
-      {isGuestMode && (
-        <div className="absolute top-0 left-0 right-0 z-20 bg-amber-500 text-white text-xs px-4 py-1 text-center font-medium shadow-md flex items-center justify-center gap-2">
-           <AlertCircle className="w-3 h-3" />
-           目前為訪客模式，若關閉視窗對話紀錄將不會永久保存。建議您登入以保存資料。
-        </div>
-      )}
-      {isAgentMode && (
-        <div className="absolute top-0 left-0 right-0 z-20 bg-indigo-600 text-white text-xs px-4 py-1 text-center font-medium shadow-md flex items-center justify-center gap-2">
-           <Briefcase className="w-3 h-3" />
-           專員模式：正在檢視並編輯 {agentModeClient.name} 的資料庫
-        </div>
-      )}
-
       {/* Left Sidebar: Document List & Switcher */}
-      <div className={`hidden lg:flex flex-col w-80 bg-gray-50 border-r border-gray-200 flex-shrink-0 ${(isGuestMode || isAgentMode) ? 'pt-6' : ''}`}>
+      <div className="hidden lg:flex flex-col w-80 bg-gray-50 border-r border-gray-200 flex-shrink-0">
         
         {/* Header */}
         <div className="p-4 bg-white border-b border-gray-200 shadow-sm z-10">
@@ -447,7 +401,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, agentModeClient }) 
       </div>
 
       {/* Main Chat Area */}
-      <div className={`flex-1 flex flex-col h-full relative min-w-0 ${(isGuestMode || isAgentMode) ? 'pt-6' : ''}`}>
+      <div className="flex-1 flex flex-col h-full relative min-w-0">
         <div className="flex-1 overflow-y-auto scrollbar-hide">
           <div className="max-w-4xl mx-auto px-6 py-10 space-y-10">
             {displayMessages.map((msg) => (
@@ -461,7 +415,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, agentModeClient }) 
 
                 <div className={`flex flex-col max-w-[90%] lg:max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                   <span className="text-base font-semibold text-gray-500 mb-2 ml-1">
-                    {msg.role === 'user' ? (isAgentMode ? '專員' : (user ? '您' : '訪客')) : 'SmartClaim AI'}
+                    {msg.role === 'user' ? '您' : 'SmartClaim AI'}
                   </span>
 
                   {/* Message Bubble */}
@@ -557,8 +511,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, agentModeClient }) 
                 </div>
 
                 {msg.role === 'user' && (
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 mt-1 shadow-sm ${isAgentMode ? 'bg-indigo-600' : 'bg-gray-500'}`}>
-                    {isAgentMode ? <Briefcase className="w-7 h-7 text-white" /> : <User className="w-7 h-7 text-white" />}
+                  <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 mt-1 shadow-sm bg-gray-500">
+                    <User className="w-7 h-7 text-white" />
                   </div>
                 )}
               </div>
@@ -599,7 +553,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, agentModeClient }) 
                 </div>
               )}
 
-            <div className={`relative shadow-xl rounded-3xl border flex flex-col ${isAgentMode ? 'border-indigo-100 bg-indigo-50/10' : 'border-gray-200 bg-white'}`}>
+            <div className="relative shadow-xl rounded-3xl border flex flex-col border-gray-200 bg-white">
               
               {/* Active Document Indicator above Input */}
               <div className="flex items-center px-6 pt-4 pb-2 gap-3 border-b border-gray-50">
@@ -656,7 +610,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, agentModeClient }) 
                   disabled={isLoading || isProcessingPdf || !inputValue.trim()}
                   className={`mr-2 p-3 rounded-xl transition-all ${
                     inputValue.trim() 
-                      ? (isAgentMode ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-emerald-600 text-white hover:bg-emerald-700')
+                      ? 'bg-emerald-600 text-white hover:bg-emerald-700'
                       : 'bg-gray-100 text-gray-300 cursor-not-allowed'
                   }`}
                 >

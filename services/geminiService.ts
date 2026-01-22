@@ -6,45 +6,37 @@ import { StructuredResponse } from "../types";
 // SECURITY NOTICE (資安與部署說明)
 // ============================================================================
 // 在純前端應用(Client-side Only)中，API Key 必定會暴露於瀏覽器環境。
-// 為了在部署後保護您的 API Key，預設會改用後端 Proxy 轉發請求。
-// 若仍要於前端直連 Gemini，請於 .env.local 將 VITE_USE_PROXY 設為 "false"
-// 並提供 VITE_GEMINI_API_KEY。
+// 為了在部署後保護您的 API Key，請務必執行以下兩項措施之一：
+//
+// 1. [推薦] HTTP Referrer 限制 (最快)：
+//    請至 Google Cloud Console > APIs & Services > Credentials
+//    編輯您的 API Key，在 "Application restrictions" 選擇 "HTTP referrers (Web sites)"
+//    並加入您部署後的網域 (例如: https://your-app.netlify.app/*)。
+//
+// 2. [進階] 後端代理 (Proxy Mode)：
+//    將下方的 USE_PROXY 設為 true，並建立一個後端 API (如 Node.js/Python)，
+//    由後端保管 API Key 並轉發請求給 Google。
 // ============================================================================
 
-const proxyFlag = (import.meta.env.VITE_USE_PROXY ?? 'true').toString().toLowerCase();
-const USE_PROXY = proxyFlag !== 'false';
-const PROXY_BASE_URL = (import.meta.env.VITE_PROXY_BASE_URL || '/api/gemini').replace(/\/$/, '');
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
+const USE_PROXY = false; // 部署時若有後端伺服器，請改為 true
+const PROXY_BASE_URL = '/api/gemini'; // 您的後端 API 路徑
+
+const apiKey = process.env.API_KEY || '';
 
 // Helper to get client or proxy URL
 const getGenAIClient = () => {
+  if (USE_PROXY) {
+    return null; // Proxy mode doesn't need client-side SDK instance usually, or handles it differently
+  }
   if (!apiKey) {
     console.warn("API Key is missing. AI features will not work.");
     return null;
   }
   // Initialize on demand to avoid global scope pollution
-  return new GoogleGenAI({ apiKey: apiKey });
+  return new GoogleGenAI({ apiKey });
 };
 
 type AnalysisMode = 'single' | 'multi' | 'general';
-
-const proxyRequest = async <T>(path: string, payload: Record<string, unknown>): Promise<T> => {
-  const response = await fetch(
-    `${PROXY_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    }
-  );
-
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(`Proxy request failed (${response.status}): ${message || response.statusText}`);
-  }
-
-  return response.json() as Promise<T>;
-};
 
 export const generatePolicySummary = async (text: string): Promise<{
   title: string;
@@ -52,13 +44,18 @@ export const generatePolicySummary = async (text: string): Promise<{
   highlights: string[];
   suggestedQuestions: string[];
 }> => {
-
-  if (USE_PROXY || !apiKey) {
-    try {
-      return await proxyRequest('/summary', { text });
-    } catch (proxyError) {
-      console.error("Proxy summary failed, falling back to client call:", proxyError);
-    }
+  // Logic branch for Proxy vs Direct SDK
+  if (USE_PROXY) {
+    // Example of how you would call your backend in the future
+    /*
+    const response = await fetch(`${PROXY_BASE_URL}/summary`, {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+      headers: { 'Content-Type': 'application/json' }
+    });
+    return response.json();
+    */
+    throw new Error("Proxy mode enabled but backend not implemented.");
   }
 
   const ai = getGenAIClient();
@@ -87,15 +84,15 @@ export const generatePolicySummary = async (text: string): Promise<{
   `;
 
   try {
-    const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
-    const response = await model.generateContent({
-      contents: [{ role: 'user', parts: [{ text: prompt }]}],
-      generationConfig: {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: {
         responseMimeType: "application/json"
       }
     });
 
-    const jsonRes = JSON.parse(response.response?.text() || "{}");
+    const jsonRes = JSON.parse(response.text || "{}");
     
     return {
       title: jsonRes.title || "已上傳保單",
@@ -131,12 +128,10 @@ export const generateClaimAdvice = async (
   mode: AnalysisMode = 'general'
 ): Promise<{ text: string; guidance: string[]; structuredData?: StructuredResponse }> => {
   
-  if (USE_PROXY || !apiKey) {
-     try {
-        return await proxyRequest('/chat', { query, contextText, mode });
-     } catch (proxyError) {
-        console.error("Proxy chat failed, falling back to client call:", proxyError);
-     }
+  if (USE_PROXY) {
+     // Placeholder for Proxy implementation
+     // const response = await fetch(`${PROXY_BASE_URL}/chat`, ...);
+     return { text: "Backend Proxy not configured.", guidance: [] };
   }
 
   const ai = getGenAIClient();
@@ -219,15 +214,15 @@ export const generateClaimAdvice = async (
   `;
 
   try {
-    const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
-    const response = await model.generateContent({
-      contents: [{ role: 'user', parts: [{ text: prompt }]}],
-      generationConfig: {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: {
         responseMimeType: "application/json"
       }
     });
 
-    const jsonRes = JSON.parse(response.response?.text() || "{}");
+    const jsonRes = JSON.parse(response.text || "{}");
     
     const structuredData: StructuredResponse = {
         status: jsonRes.status || 'analysis',

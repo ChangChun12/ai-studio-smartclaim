@@ -1,16 +1,7 @@
 
 export enum ViewState {
   HOME = 'HOME',
-  DEMO = 'DEMO',
-  ABOUT = 'ABOUT',
-  AGENT_DASHBOARD = 'AGENT_DASHBOARD',
-  DOCS = 'DOCS'
-}
-
-export interface UserProfile {
-  name: string;
-  email: string;
-  picture: string;
+  DEMO = 'DEMO'
 }
 
 export interface PolicyChunk {
@@ -28,13 +19,13 @@ export interface PdfPage {
 }
 
 export interface StructuredResponse {
-  status: 'analysis' | 'clarification'; // New: Distinguish between final advice and asking for more info
+  status: 'analysis' | 'clarification';
   response: string;
   checklist?: string[];
   key_points?: string[];
   warning?: string;
   original_terms?: string;
-  follow_up?: string; // New: Specific question to ask the user
+  follow_up?: string;
 }
 
 export interface Message {
@@ -53,25 +44,11 @@ export interface UploadedDocument {
   fullText: string;
   fileUrl: string;
   chatHistory: Message[];
-  suggestedQuestions?: string[]; // New: Store AI-generated questions for this document
+  suggestedQuestions?: string[];
 }
 
 export interface ResearchMetric {
   label: string;
   value: string;
   description: string;
-}
-
-// Agent / CRM Related Types
-export interface ClientSummary {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  lastInteraction: string;
-  policyCount: number;
-  riskStatus: 'Low' | 'Medium' | 'High';
-  tags: string[];
-  notes: string;
-  mockPolicies: { name: string; type: string; coverage: string }[];
 }
