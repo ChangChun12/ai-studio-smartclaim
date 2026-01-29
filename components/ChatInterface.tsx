@@ -19,17 +19,17 @@ const ChatInterface: React.FC = () => {
   const [globalMessages, setGlobalMessages] = useState<Message[]>([DEFAULT_WELCOME_MESSAGE]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  
+
   // Multi-document state
   const [documents, setDocuments] = useState<UploadedDocument[]>([]);
   const [activeDocId, setActiveDocId] = useState<string | null>(null);
   const [isProcessingPdf, setIsProcessingPdf] = useState(false);
   const [processingStatus, setProcessingStatus] = useState('');
-  
+
   // Viewer state
   const [expandedTermsId, setExpandedTermsId] = useState<string | null>(null);
   const [showPdfContent, setShowPdfContent] = useState(false);
-  
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -42,8 +42,8 @@ const ChatInterface: React.FC = () => {
       try {
         const parsedData = JSON.parse(savedData);
         setDocuments(Array.isArray(parsedData.documents) ? parsedData.documents : []);
-        setGlobalMessages(Array.isArray(parsedData.globalMessages) && parsedData.globalMessages.length > 0 
-          ? parsedData.globalMessages 
+        setGlobalMessages(Array.isArray(parsedData.globalMessages) && parsedData.globalMessages.length > 0
+          ? parsedData.globalMessages
           : [DEFAULT_WELCOME_MESSAGE]
         );
       } catch (e) {
@@ -89,14 +89,14 @@ const ChatInterface: React.FC = () => {
   }, [displayMessages, expandedTermsId]);
 
   useEffect(() => {
-    setShowPdfContent(false); 
+    setShowPdfContent(false);
   }, [activeDocId]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const pdfFiles = Array.from(files).filter((file: any) => file.type === 'application/pdf') as File[];
+    const pdfFiles = (Array.from(files) as File[]).filter((file) => file.type === 'application/pdf');
 
     if (pdfFiles.length === 0) {
       alert('請上傳 PDF 格式的檔案');
@@ -105,7 +105,7 @@ const ChatInterface: React.FC = () => {
     }
 
     setIsProcessingPdf(true);
-    
+
     const newDocs: UploadedDocument[] = [];
     let successCount = 0;
     let failCount = 0;
@@ -114,27 +114,27 @@ const ChatInterface: React.FC = () => {
       for (let i = 0; i < pdfFiles.length; i++) {
         const file = pdfFiles[i];
         setProcessingStatus(`正在解析保單 ${i + 1}/${pdfFiles.length}...`);
-        
+
         try {
           const docData = await extractPdfData(file);
-          
+
           if (docData) {
             setProcessingStatus(`AI 正在分析「${file.name}」內容...`);
             const summary = await generatePolicySummary(docData.fullText);
-            
+
             const welcomeMsg: Message = {
-                id: `welcome-${docData.id}`,
-                role: 'model',
-                text: `✅ **保單載入完成！**\n\n` +
-                      `📋 **${summary.title}**\n` +
-                      `${summary.summary}\n\n` +
-                      `✨ **保障亮點**：\n` +
-                      summary.highlights.map(h => `• ${h}`).join('\n')
+              id: `welcome-${docData.id}`,
+              role: 'model',
+              text: `✅ **保單載入完成！**\n\n` +
+                `📋 **${summary.title}**\n` +
+                `${summary.summary}\n\n` +
+                `✨ **保障亮點**：\n` +
+                summary.highlights.map(h => `• ${h}`).join('\n')
             };
 
             docData.chatHistory = [welcomeMsg];
             docData.suggestedQuestions = summary.suggestedQuestions;
-            
+
             newDocs.push(docData);
             successCount++;
           }
@@ -192,9 +192,9 @@ const ChatInterface: React.FC = () => {
     setExpandedTermsId(null);
 
     if (activeDocument) {
-      setDocuments(prev => prev.map(d => 
-        d.id === activeDocId 
-          ? { ...d, chatHistory: [...d.chatHistory, userMsg] } 
+      setDocuments(prev => prev.map(d =>
+        d.id === activeDocId
+          ? { ...d, chatHistory: [...d.chatHistory, userMsg] }
           : d
       ));
     } else {
@@ -206,16 +206,16 @@ const ChatInterface: React.FC = () => {
     let contextText = "";
 
     if (activeDocument) {
-        mode = 'single';
-        contextText = activeDocument.fullText;
+      mode = 'single';
+      contextText = activeDocument.fullText;
     } else {
-        if (documents.length > 0) {
-            mode = 'multi';
-            contextText = documents.map(d => `\n--- 文件: ${d.name} ---\n${d.fullText}`).join("\n\n");
-        } else {
-            mode = 'general';
-            contextText = "";
-        }
+      if (documents.length > 0) {
+        mode = 'multi';
+        contextText = documents.map(d => `\n--- 文件: ${d.name} ---\n${d.fullText}`).join("\n\n");
+      } else {
+        mode = 'general';
+        contextText = "";
+      }
     }
 
     const aiResponse = await generateClaimAdvice(text, contextText, mode);
@@ -229,15 +229,15 @@ const ChatInterface: React.FC = () => {
     };
 
     if (activeDocument) {
-      setDocuments(prev => prev.map(d => 
-        d.id === activeDocId 
-          ? { ...d, chatHistory: [...d.chatHistory, modelMsg] } 
+      setDocuments(prev => prev.map(d =>
+        d.id === activeDocId
+          ? { ...d, chatHistory: [...d.chatHistory, modelMsg] }
           : d
       ));
     } else {
       setGlobalMessages(prev => [...prev, modelMsg]);
     }
-    
+
     setIsLoading(false);
   };
 
@@ -257,10 +257,10 @@ const ChatInterface: React.FC = () => {
 
   return (
     <div className="flex flex-col lg:flex-row h-full bg-white font-sans text-base relative">
-      
+
       {/* Left Sidebar: Document List & Switcher */}
       <div className="hidden lg:flex flex-col w-80 bg-gray-50 border-r border-gray-200 flex-shrink-0">
-        
+
         {/* Header */}
         <div className="p-4 bg-white border-b border-gray-200 shadow-sm z-10">
           <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm uppercase tracking-wide">
@@ -268,135 +268,135 @@ const ChatInterface: React.FC = () => {
             已上傳保單 ({documents.length})
           </h3>
         </div>
-        
+
         {/* Document List Area */}
         <div className="flex-1 overflow-y-auto p-3 space-y-3">
-          
+
           {/* Policy Manager / Expert Advisor Card */}
-          <div 
+          <div
             onClick={() => setActiveDocId(null)}
             className={`
               cursor-pointer rounded-xl border-2 p-4 flex flex-col items-center text-center transition-all duration-200
-              ${activeDocId === null 
-                ? 'bg-white border-emerald-500 shadow-md' 
+              ${activeDocId === null
+                ? 'bg-white border-emerald-500 shadow-md'
                 : 'bg-white border-transparent hover:border-gray-300 opacity-70 hover:opacity-100'}
             `}
           >
-             {activeDocId === null && <div className="text-xs font-bold text-emerald-600 mb-2 w-full text-left flex items-center"><CheckCircle2 className="w-3 h-3 mr-1"/>目前位置</div>}
-             <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center mb-2 text-indigo-600">
-                <Layers className={`w-5 h-5`} />
-             </div>
-             <h4 className="text-sm font-bold text-gray-700 mb-1">
-                {documents.length > 0 ? "保單總管 (跨文件分析)" : "專業保險顧問"}
-             </h4>
-             <p className="text-[10px] text-gray-500 leading-tight">
-               {documents.length > 0 
-                 ? "一次分析所有已上傳的保單，進行比較或總覽。" 
-                 : "無需保單，回答一般保險知識、名詞解釋與法規。"}
-             </p>
+            {activeDocId === null && <div className="text-xs font-bold text-emerald-600 mb-2 w-full text-left flex items-center"><CheckCircle2 className="w-3 h-3 mr-1" />目前位置</div>}
+            <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center mb-2 text-indigo-600">
+              <Layers className={`w-5 h-5`} />
+            </div>
+            <h4 className="text-sm font-bold text-gray-700 mb-1">
+              {documents.length > 0 ? "保單總管 (跨文件分析)" : "專業保險顧問"}
+            </h4>
+            <p className="text-[10px] text-gray-500 leading-tight">
+              {documents.length > 0
+                ? "一次分析所有已上傳的保單，進行比較或總覽。"
+                : "無需保單，回答一般保險知識、名詞解釋與法規。"}
+            </p>
           </div>
 
           <div className="border-t border-gray-200 my-2"></div>
 
           {documents.map((doc) => {
-             const isActive = activeDocId === doc.id;
-             return (
-              <div 
+            const isActive = activeDocId === doc.id;
+            return (
+              <div
                 key={doc.id}
                 onClick={() => setActiveDocId(doc.id)}
                 className={`
                   group relative rounded-xl border-2 transition-all duration-200 cursor-pointer overflow-hidden
-                  ${isActive 
-                    ? 'bg-white border-emerald-500 shadow-lg scale-[1.02]' 
+                  ${isActive
+                    ? 'bg-white border-emerald-500 shadow-lg scale-[1.02]'
                     : 'bg-white border-transparent hover:border-gray-300 shadow-sm hover:shadow-md'}
                 `}
               >
                 {isActive && <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500"></div>}
 
                 <div className="p-3 pl-4">
-                   <div className="flex justify-between items-start mb-2">
-                      <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center text-red-500 shrink-0">
-                         <FileText className="w-4 h-4" />
-                      </div>
-                      <button 
-                        onClick={(e) => removeDocument(doc.id, e)}
-                        className="p-1.5 text-gray-300 hover:text-red-500 rounded-full hover:bg-red-50 transition-colors"
-                        title="移除此保單"
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center text-red-500 shrink-0">
+                      <FileText className="w-4 h-4" />
+                    </div>
+                    <button
+                      onClick={(e) => removeDocument(doc.id, e)}
+                      className="p-1.5 text-gray-300 hover:text-red-500 rounded-full hover:bg-red-50 transition-colors"
+                      title="移除此保單"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <h4 className={`text-sm font-bold mb-1 line-clamp-2 ${isActive ? 'text-gray-900' : 'text-gray-600'}`}>
+                    {doc.name}
+                  </h4>
+                  <p className="text-[10px] text-gray-400 mb-2">
+                    PDF • {doc.pages.length} 頁
+                  </p>
+
+                  {isActive ? (
+                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
+                      <span className="text-[10px] text-emerald-600 font-bold">對話進行中</span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setShowPdfContent(!showPdfContent); }}
+                        className="flex items-center text-[10px] text-gray-500 hover:text-emerald-600 font-medium px-2 py-1 bg-gray-50 hover:bg-emerald-50 rounded transition-colors"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        {showPdfContent ? (
+                          <><EyeOff className="w-3 h-3 mr-1" />隱藏內容</>
+                        ) : (
+                          <><Eye className="w-3 h-3 mr-1" />檢視內容</>
+                        )}
                       </button>
-                   </div>
-
-                   <h4 className={`text-sm font-bold mb-1 line-clamp-2 ${isActive ? 'text-gray-900' : 'text-gray-600'}`}>
-                     {doc.name}
-                   </h4>
-                   <p className="text-[10px] text-gray-400 mb-2">
-                     PDF • {doc.pages.length} 頁
-                   </p>
-
-                   {isActive ? (
-                     <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
-                        <span className="text-[10px] text-emerald-600 font-bold">對話進行中</span>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); setShowPdfContent(!showPdfContent); }}
-                          className="flex items-center text-[10px] text-gray-500 hover:text-emerald-600 font-medium px-2 py-1 bg-gray-50 hover:bg-emerald-50 rounded transition-colors"
-                        >
-                           {showPdfContent ? (
-                             <><EyeOff className="w-3 h-3 mr-1" />隱藏內容</>
-                           ) : (
-                             <><Eye className="w-3 h-3 mr-1" />檢視內容</>
-                           )}
-                        </button>
-                     </div>
-                   ) : (
-                      <div className="mt-2 text-[10px] text-gray-400 group-hover:text-emerald-600 transition-colors text-right">
-                         點擊切換至此對話
-                      </div>
-                   )}
+                    </div>
+                  ) : (
+                    <div className="mt-2 text-[10px] text-gray-400 group-hover:text-emerald-600 transition-colors text-right">
+                      點擊切換至此對話
+                    </div>
+                  )}
                 </div>
 
                 {isActive && showPdfContent && (
                   <div className="bg-gray-100 border-t border-gray-200 h-64 relative group-hover:block" onClick={(e) => e.stopPropagation()}>
                     {doc.fileUrl ? (
-                        <iframe 
-                            src={`${doc.fileUrl}#toolbar=0&navpanes=0`}
-                            className="w-full h-full"
-                            title="PDF Viewer"
-                        />
+                      <iframe
+                        src={`${doc.fileUrl}#toolbar=0&navpanes=0`}
+                        className="w-full h-full"
+                        title="PDF Viewer"
+                      />
                     ) : (
-                        <div className="w-full h-full p-4 overflow-y-auto bg-white text-xs text-gray-600 font-mono whitespace-pre-wrap">
-                            <div className="flex items-center gap-2 mb-2 text-amber-600 font-bold border-b pb-2">
-                                <FileWarning className="w-4 h-4" />
-                                <span>原始檔案未暫存，顯示解析文字</span>
-                            </div>
-                            {doc.fullText}
+                      <div className="w-full h-full p-4 overflow-y-auto bg-white text-xs text-gray-600 font-mono whitespace-pre-wrap">
+                        <div className="flex items-center gap-2 mb-2 text-amber-600 font-bold border-b pb-2">
+                          <FileWarning className="w-4 h-4" />
+                          <span>原始檔案未暫存，顯示解析文字</span>
                         </div>
+                        {doc.fullText}
+                      </div>
                     )}
-                     <div className="absolute top-0 right-0 p-1">
-                        <button 
-                            onClick={(e) => { e.stopPropagation(); setShowPdfContent(false); }}
-                            className="bg-black/50 hover:bg-black/70 text-white p-1 rounded"
-                        >
-                            <Minimize2 className="w-3 h-3" />
-                        </button>
+                    <div className="absolute top-0 right-0 p-1">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setShowPdfContent(false); }}
+                        className="bg-black/50 hover:bg-black/70 text-white p-1 rounded"
+                      >
+                        <Minimize2 className="w-3 h-3" />
+                      </button>
                     </div>
                   </div>
                 )}
               </div>
-             );
+            );
           })}
         </div>
 
         {/* Persistent Footer with Upload Button */}
         <div className="p-4 bg-white border-t border-gray-200">
-            <button 
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isProcessingPdf}
-                className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-bold transition-all shadow-sm hover:shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-                {isProcessingPdf ? <Loader2 className="w-5 h-5 animate-spin"/> : <FilePlus className="w-5 h-5" />}
-                {isProcessingPdf ? "分析中..." : '上傳保單 (可多選)'}
-            </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isProcessingPdf}
+            className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-bold transition-all shadow-sm hover:shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isProcessingPdf ? <Loader2 className="w-5 h-5 animate-spin" /> : <FilePlus className="w-5 h-5" />}
+            {isProcessingPdf ? "分析中..." : '上傳保單 (可多選)'}
+          </button>
         </div>
       </div>
 
@@ -406,7 +406,7 @@ const ChatInterface: React.FC = () => {
           <div className="max-w-4xl mx-auto px-6 py-10 space-y-10">
             {displayMessages.map((msg) => (
               <div key={msg.id} className={`flex gap-6 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                
+
                 {msg.role === 'model' && (
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 mt-1 shadow-sm ${msg.structuredData?.status === 'clarification' ? 'bg-amber-500' : 'bg-emerald-600'}`}>
                     {msg.structuredData?.status === 'clarification' ? <HelpCircle className="w-7 h-7 text-white" /> : <Bot className="w-7 h-7 text-white" />}
@@ -419,17 +419,16 @@ const ChatInterface: React.FC = () => {
                   </span>
 
                   {/* Message Bubble */}
-                  <div className={`text-2xl leading-relaxed rounded-2xl shadow-sm ${
-                    msg.role === 'user' 
-                      ? 'bg-gray-100 text-gray-800 p-6 rounded-tr-none' 
-                      : 'w-full text-gray-800'
-                  }`}>
-                    
+                  <div className={`text-2xl leading-relaxed rounded-2xl shadow-sm ${msg.role === 'user'
+                    ? 'bg-gray-100 text-gray-800 p-6 rounded-tr-none'
+                    : 'w-full text-gray-800'
+                    }`}>
+
                     {msg.role === 'user' && msg.text}
 
                     {msg.role === 'model' && (
                       <div className="space-y-6">
-                        
+
                         {msg.structuredData?.status === 'clarification' && (
                           <div className="bg-amber-50 border border-amber-200 rounded-lg p-5 text-lg text-amber-800 font-medium flex items-center mb-4">
                             <AlertCircle className="w-6 h-6 mr-3" />
@@ -438,19 +437,19 @@ const ChatInterface: React.FC = () => {
                         )}
 
                         <div className="text-gray-900 leading-9 whitespace-pre-line text-2xl">
-                             {renderFormattedText(msg.structuredData?.response || msg.text)}
+                          {renderFormattedText(msg.structuredData?.response || msg.text)}
                         </div>
-                        
+
                         {msg.structuredData?.follow_up && (
-                           <div className="mt-4 text-2xl font-bold text-emerald-700">
-                              {msg.structuredData.follow_up}
-                           </div>
+                          <div className="mt-4 text-2xl font-bold text-emerald-700">
+                            {msg.structuredData.follow_up}
+                          </div>
                         )}
 
                         {msg.structuredData?.key_points && msg.structuredData.key_points.length > 0 && (
                           <div className="bg-blue-50 border-l-4 border-blue-500 p-6 rounded-r-lg">
                             <h4 className="text-xl font-bold text-blue-800 mb-4 flex items-center">
-                              <Calculator className="w-6 h-6 mr-3"/>
+                              <Calculator className="w-6 h-6 mr-3" />
                               理賠試算與重點：
                             </h4>
                             <ul className="space-y-3">
@@ -482,21 +481,21 @@ const ChatInterface: React.FC = () => {
 
                         {msg.structuredData?.warning && (
                           <div className="bg-red-50 text-red-700 p-5 rounded-lg border border-red-100 text-xl flex items-start">
-                             <AlertCircle className="w-7 h-7 mr-3 flex-shrink-0 mt-0.5" />
-                             <span className="font-medium">{renderFormattedText(msg.structuredData.warning)}</span>
+                            <AlertCircle className="w-7 h-7 mr-3 flex-shrink-0 mt-0.5" />
+                            <span className="font-medium">{renderFormattedText(msg.structuredData.warning)}</span>
                           </div>
                         )}
 
                         {msg.structuredData?.original_terms && (
                           <div className="pt-4">
-                            <button 
+                            <button
                               onClick={() => toggleTerms(msg.id)}
                               className="text-gray-500 hover:text-emerald-600 font-medium flex items-center text-sm transition-colors group"
                             >
                               <FileText className="w-5 h-5 mr-2 group-hover:scale-110 transition-transform" />
                               {expandedTermsId === msg.id ? '收起參考條款' : '查看原始條款依據'}
                             </button>
-                            
+
                             {expandedTermsId === msg.id && (
                               <div className="mt-4 p-5 bg-gray-50 border border-gray-200 text-sm text-gray-600 font-mono whitespace-pre-wrap rounded-lg leading-relaxed shadow-inner">
                                 {msg.structuredData.original_terms}
@@ -517,12 +516,12 @@ const ChatInterface: React.FC = () => {
                 )}
               </div>
             ))}
-            
+
             {(isLoading || isProcessingPdf) && (
               <div className="flex gap-4">
-                 <div className="w-12 h-12 rounded-full bg-emerald-600 flex items-center justify-center flex-shrink-0 mt-1">
-                    {isProcessingPdf ? <Sparkles className="w-7 h-7 text-white animate-pulse" /> : <Bot className="w-7 h-7 text-white" />}
-                  </div>
+                <div className="w-12 h-12 rounded-full bg-emerald-600 flex items-center justify-center flex-shrink-0 mt-1">
+                  {isProcessingPdf ? <Sparkles className="w-7 h-7 text-white animate-pulse" /> : <Bot className="w-7 h-7 text-white" />}
+                </div>
                 <div className="flex items-center gap-3 text-gray-500 text-xl mt-3">
                   <Loader2 className="w-6 h-6 animate-spin" />
                   <span className="animate-pulse">
@@ -538,23 +537,23 @@ const ChatInterface: React.FC = () => {
         {/* Input Area */}
         <div className="p-6 bg-gradient-to-t from-white via-white to-transparent">
           <div className="max-w-4xl mx-auto">
-             {displayMessages.length <= 1 && (
-                <div className="flex gap-3 overflow-x-auto pb-6 scrollbar-hide justify-center px-4">
-                  {currentSuggestedQueries.map((q, i) => (
-                    <button
-                      key={i}
-                      onClick={() => handleSend(q)}
-                      title={q}
-                      className="flex-shrink-0 whitespace-nowrap px-6 py-3 bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 text-base rounded-full transition-colors shadow-sm max-w-[200px] truncate"
-                    >
-                      {q}
-                    </button>
-                  ))}
-                </div>
-              )}
+            {displayMessages.length <= 1 && (
+              <div className="flex gap-3 overflow-x-auto pb-6 scrollbar-hide justify-center px-4">
+                {currentSuggestedQueries.map((q, i) => (
+                  <button
+                    key={i}
+                    onClick={() => handleSend(q)}
+                    title={q}
+                    className="flex-shrink-0 whitespace-nowrap px-6 py-3 bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 text-base rounded-full transition-colors shadow-sm max-w-[200px] truncate"
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            )}
 
             <div className="relative shadow-xl rounded-3xl border flex flex-col border-gray-200 bg-white">
-              
+
               {/* Active Document Indicator above Input */}
               <div className="flex items-center px-6 pt-4 pb-2 gap-3 border-b border-gray-50">
                 <span className="text-sm text-gray-400">目前模式：</span>
@@ -572,16 +571,16 @@ const ChatInterface: React.FC = () => {
               </div>
 
               <div className="flex items-center w-full p-2">
-                <input 
-                  type="file" 
+                <input
+                  type="file"
                   multiple
                   ref={fileInputRef}
                   onChange={handleFileUpload}
-                  className="hidden" 
+                  className="hidden"
                   accept=".pdf"
                 />
-                
-                <button 
+
+                <button
                   onClick={() => fileInputRef.current?.click()}
                   className="ml-2 p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl transition-colors group relative"
                   title="上傳新保單"
@@ -598,21 +597,20 @@ const ChatInterface: React.FC = () => {
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSend(inputValue)}
                   placeholder={
-                    activeDocument 
-                      ? `針對「${activeDocument.name}」提問...` 
+                    activeDocument
+                      ? `針對「${activeDocument.name}」提問...`
                       : (documents.length > 0 ? "詢問所有已上傳的保單..." : "詢問一般保險知識、法規或名詞解釋...")
                   }
                   className="flex-1 px-4 py-5 bg-transparent rounded-2xl focus:ring-0 focus:outline-none text-gray-700 placeholder-gray-400 text-xl"
                 />
-                
+
                 <button
                   onClick={() => handleSend(inputValue)}
                   disabled={isLoading || isProcessingPdf || !inputValue.trim()}
-                  className={`mr-2 p-3 rounded-xl transition-all ${
-                    inputValue.trim() 
-                      ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                      : 'bg-gray-100 text-gray-300 cursor-not-allowed'
-                  }`}
+                  className={`mr-2 p-3 rounded-xl transition-all ${inputValue.trim()
+                    ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                    : 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                    }`}
                 >
                   <Send className="w-6 h-6" />
                 </button>
