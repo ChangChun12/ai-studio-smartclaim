@@ -113,13 +113,66 @@ const ChatInterface: React.FC = () => {
     try {
       for (let i = 0; i < pdfFiles.length; i++) {
         const file = pdfFiles[i];
+
+        // Check for duplicate filename
+        const existingDoc = documents.find(doc => doc.name === file.name);
+        let shouldReplace = false;
+        if (existingDoc) {
+          shouldReplace = window.confirm(
+            `「${file.name}」已經上傳過了。\n\n按「確定」覆蓋舊保單\n按「取消」保留兩者（會自動重新命名）`
+          );
+
+          if (shouldReplace) {
+            // Remove the existing document
+            setDocuments(prev => prev.filter(d => d.id !== existingDoc.id));
+            if (activeDocId === existingDoc.id) {
+              setActiveDocId(null);
+            }
+          }
+          // If user cancels, we continue processing and will rename the file below
+        }
+
         setProcessingStatus(`正在解析保單 ${i + 1}/${pdfFiles.length}...`);
 
         try {
           const docData = await extractPdfData(file);
 
           if (docData) {
-            setProcessingStatus(`AI 正在分析「${file.name}」內容...`);
+            // Validate if this is actually a policy document
+            // Tier 1: General insurance keywords
+            const generalKeywords = ['保險', '保單'];
+            // Tier 2: Specific policy document keywords (more likely to appear in actual policies)
+            const specificKeywords = ['被保險人', '要保人', '保險金額', '保費', '受益人', '保險契約', '保險期間', '給付', '理賠', '除外責任'];
+
+            const text = docData.fullText.substring(0, 5000); // Check first 5000 chars
+            const foundGeneral = generalKeywords.filter(kw => text.includes(kw));
+            const foundSpecific = specificKeywords.filter(kw => text.includes(kw));
+
+            // Must have at least 1 general keyword AND at least 3 specific keywords
+            const isLikelyPolicy = foundGeneral.length >= 1 && foundSpecific.length >= 3;
+
+            if (!isLikelyPolicy) {
+              const shouldContinue = window.confirm(
+                `⚠️ 警告：「${file.name}」似乎不是保險保單文件。\n\n` +
+                `系統偵測結果：\n` +
+                `• 基本關鍵字：${foundGeneral.length}/${generalKeywords.length}\n` +
+                `• 保單專用關鍵字：${foundSpecific.length}/${specificKeywords.length}\n\n` +
+                `這可能是企劃書、說明文件或其他非保單文件。\n\n` +
+                `按「確定」強制上傳\n按「取消」跳過此檔案`
+              );
+
+              if (!shouldContinue) {
+                console.log(`Skipped non-policy file: ${file.name}`);
+                continue;
+              }
+            }
+            // If duplicate exists and user chose to keep both, rename the new one
+            if (existingDoc && !shouldReplace) {
+              const timestamp = new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+              docData.name = `${docData.name} (${timestamp})`;
+            }
+
+            setProcessingStatus(`AI 正在分析「${docData.name}」內容...`);
             const summary = await generatePolicySummary(docData.fullText);
 
             const welcomeMsg: Message = {
@@ -259,7 +312,7 @@ const ChatInterface: React.FC = () => {
     <div className="flex flex-col lg:flex-row h-full bg-white font-sans text-base relative">
 
       {/* Left Sidebar: Document List & Switcher */}
-      <div className="hidden lg:flex flex-col w-80 bg-gray-50 border-r border-gray-200 flex-shrink-0">
+      <div className="hidden lg:flex flex-col w-80 bg-gray-50 border-r border-gray-200 flex-shrink-0 h-full">
 
         {/* Header */}
         <div className="p-4 bg-white border-b border-gray-200 shadow-sm z-10">
@@ -271,6 +324,7 @@ const ChatInterface: React.FC = () => {
 
         {/* Document List Area */}
         <div className="flex-1 overflow-y-auto p-3 space-y-3">
+
 
           {/* Policy Manager / Expert Advisor Card */}
           <div

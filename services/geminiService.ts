@@ -2,10 +2,11 @@
 import { StructuredResponse } from "../types";
 
 // Toggle this to TRUE to use the secure backend proxy
-const USE_PROXY = true;
+// For local testing with .env, set VITE_USE_LOCAL_API=true in .env
+const USE_PROXY = !import.meta.env.VITE_USE_LOCAL_API;
 
 // Only used for local testing if USE_PROXY is false
-const localApiKey = process.env.GEMINI_API_KEY || '';
+const localApiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
 
 type AnalysisMode = 'single' | 'multi' | 'general';
 

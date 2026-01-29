@@ -15,7 +15,7 @@ const App: React.FC = () => {
         setView={setCurrentView}
       />
 
-      <main className="flex-grow">
+      <main className="flex-grow h-0">
         {currentView === ViewState.HOME && <Home setView={setCurrentView} />}
         {currentView === ViewState.DEMO && <ChatInterface />}
       </main>
