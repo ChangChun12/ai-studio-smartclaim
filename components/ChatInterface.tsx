@@ -1,12 +1,20 @@
 
+
 import React, { useState, useRef, useEffect } from 'react';
-import { Message, UploadedDocument } from '../types';
+import { Message, UploadedDocument, Customer } from '../types';
 import { generateClaimAdvice, generatePolicySummary } from '../services/geminiService';
 import { extractPdfData } from '../services/pdfService';
 import { SAMPLE_QUERIES } from '../constants';
 import { Send, FileText, CheckCircle2, Bot, User, Loader2, FilePlus, Layers, Calculator, Minimize2, EyeOff, Eye, Trash2, LayoutList, HelpCircle, AlertCircle, Sparkles, FileWarning } from 'lucide-react';
+import { auth } from '../services/firebase';
+import { loadUserDocuments, saveUserDocument, updateChatHistory, deleteUserDocument } from '../services/userDataService';
+import { User as FirebaseUser } from 'firebase/auth';
 
-const ChatInterface: React.FC = () => {
+interface ChatInterfaceProps {
+  selectedCustomer?: Customer | null;
+}
+
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ selectedCustomer }) => {
   // Persistence Key
   const storageKey = 'smartclaim_data_v1';
 
@@ -26,6 +34,10 @@ const ChatInterface: React.FC = () => {
   const [isProcessingPdf, setIsProcessingPdf] = useState(false);
   const [processingStatus, setProcessingStatus] = useState('');
 
+  // User state
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [isLoadingUserData, setIsLoadingUserData] = useState(false);
+
   // Viewer state
   const [expandedTermsId, setExpandedTermsId] = useState<string | null>(null);
   const [showPdfContent, setShowPdfContent] = useState(false);
@@ -33,9 +45,64 @@ const ChatInterface: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // --- User Authentication Logic ---
+
+  // 監聽使用者登入狀態
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged(async (user) => {
+      console.log('🔐 使用者狀態變更:', user ? `已登入 (${user.email})` : '未登入');
+      setCurrentUser(user);
+
+      if (user && !selectedCustomer) {
+        // 使用者已登入且不是從專員模式來的,載入 Firestore 資料
+        console.log('📥 開始載入 Firestore 資料...');
+        setIsLoadingUserData(true);
+        try {
+          const userDocs = await loadUserDocuments(user.uid);
+          console.log('📦 從 Firestore 載入了', userDocs.length, '份文件');
+
+          if (userDocs.length > 0) {
+            setDocuments(userDocs);
+            // 設定第一個文件為活動文件
+            if (!activeDocId) {
+              setActiveDocId(userDocs[0].id);
+            }
+            // 清空 localStorage,改用 Firestore
+            localStorage.removeItem(storageKey);
+            console.log('✅ Firestore 資料載入完成');
+          } else {
+            console.log('ℹ️ Firestore 沒有儲存的文件');
+          }
+        } catch (error) {
+          console.error('❌ 載入使用者資料失敗:', error);
+        } finally {
+          setIsLoadingUserData(false);
+        }
+      } else if (!user && !selectedCustomer) {
+        // 使用者登出,載入 localStorage 資料
+        console.log('📥 載入 localStorage 資料...');
+        const savedData = localStorage.getItem(storageKey);
+        if (savedData) {
+          try {
+            const parsedData = JSON.parse(savedData);
+            setDocuments(Array.isArray(parsedData.documents) ? parsedData.documents : []);
+            console.log('✅ localStorage 資料載入完成');
+          } catch (e) {
+            console.error("Failed to load localStorage data", e);
+          }
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, [selectedCustomer]);
+
   // --- Persistence Logic ---
 
   useEffect(() => {
+    // 如果使用者已登入,不使用 localStorage
+    if (currentUser) return;
+
     const savedData = localStorage.getItem(storageKey);
 
     if (savedData) {
@@ -52,33 +119,145 @@ const ChatInterface: React.FC = () => {
         setGlobalMessages([DEFAULT_WELCOME_MESSAGE]);
       }
     }
-  }, []);
+  }, [currentUser]);
 
+  // 處理從專員模式傳來的客戶資料
   useEffect(() => {
-    const docsToSave = documents.map(doc => ({
-      ...doc,
-      fileUrl: '' // Clear blob URL for persistence
-    }));
+    if (selectedCustomer && selectedCustomer.policies.length > 0) {
+      // 只處理主約保單,將其轉換為文件格式
+      const mainPolicies = selectedCustomer.policies.filter(p => p.policyType === 'main');
 
-    const dataToSave = {
-      documents: docsToSave,
-      globalMessages
-    };
+      const policyDocuments: UploadedDocument[] = mainPolicies.map(policy => {
+        // 找出該主約的所有附約
+        const riders = selectedCustomer.policies.filter(p =>
+          p.policyType === 'rider' && p.parentPolicyId === policy.id
+        );
 
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(dataToSave));
-    } catch (e) {
-      console.error("Storage quota exceeded or error", e);
+        // 生成保單內容文字
+        const currencySymbol = policy.currency === 'TWD' ? 'NT$' : policy.currency === 'USD' ? 'US$' : policy.currency === 'CNY' ? 'CN¥' : 'HK$';
+        const frequencyLabel = policy.paymentFrequency === 'annual' ? '年繳' : policy.paymentFrequency === 'semiannual' ? '半年繳' : policy.paymentFrequency === 'quarterly' ? '季繳' : '月繳';
+
+        let policyContent = `保單名稱: ${policy.policyName}\n`;
+        policyContent += `保單號碼: ${policy.policyNumber || '未提供'}\n`;
+        policyContent += `保險公司: ${policy.insuranceCompany || '未提供'}\n`;
+        policyContent += `保障類型: ${policy.coverageType || '未提供'}\n`;
+        policyContent += `保費: ${currencySymbol} ${policy.premium.toLocaleString()} / ${frequencyLabel}\n`;
+        policyContent += `保障期間: ${new Date(policy.startDate).toLocaleDateString('zh-TW')} ~ ${new Date(policy.endDate).toLocaleDateString('zh-TW')}\n`;
+        policyContent += `狀態: ${policy.status === 'active' ? '生效中' : policy.status === 'expiring' ? '即將到期' : '已到期'}\n`;
+
+        if (policy.notes) {
+          policyContent += `\n備註: ${policy.notes}\n`;
+        }
+
+        // 如果有附約,加入附約資訊
+        if (riders.length > 0) {
+          policyContent += `\n--- 附約 (${riders.length} 份) ---\n\n`;
+          riders.forEach((rider, index) => {
+            const riderCurrency = rider.currency === 'TWD' ? 'NT$' : rider.currency === 'USD' ? 'US$' : rider.currency === 'CNY' ? 'CN¥' : 'HK$';
+            const riderFrequency = rider.paymentFrequency === 'annual' ? '年繳' : rider.paymentFrequency === 'semiannual' ? '半年繳' : rider.paymentFrequency === 'quarterly' ? '季繳' : '月繳';
+            policyContent += `附約 ${index + 1}: ${rider.policyName}\n`;
+            policyContent += `  - 保單號碼: ${rider.policyNumber || '未提供'}\n`;
+            policyContent += `  - 保障類型: ${rider.coverageType || '未提供'}\n`;
+            policyContent += `  - 保費: ${riderCurrency} ${rider.premium.toLocaleString()} / ${riderFrequency}\n`;
+            policyContent += `  - 保障期間: ${new Date(rider.startDate).toLocaleDateString('zh-TW')} ~ ${new Date(rider.endDate).toLocaleDateString('zh-TW')}\n\n`;
+          });
+        }
+
+        return {
+          id: `policy_${policy.id}`,
+          name: `${policy.policyName}${riders.length > 0 ? ` (含 ${riders.length} 份附約)` : ''}`,
+          pages: [{
+            pageNumber: 1,
+            content: policyContent
+          }],
+          fullText: policyContent,
+          fileUrl: policy.documentUrl || '',
+          chatHistory: [],
+          messages: [],
+          summary: `${policy.policyName} - ${policy.insuranceCompany || '未提供'} - ${currencySymbol} ${policy.premium.toLocaleString()}/${frequencyLabel}`
+        };
+      });
+
+      // 設定文件和激活第一個
+      setDocuments(policyDocuments);
+      if (policyDocuments.length > 0) {
+        setActiveDocId(policyDocuments[0].id);
+      }
+
+      // 添加歡迎訊息
+      const welcomeMessage: Message = {
+        id: `customer_welcome_${Date.now()}`,
+        role: 'model',
+        text: `📋 **已載入客戶保單資料**\n\n**客戶**: ${selectedCustomer.name}\n**電話**: ${selectedCustomer.phone}\n\n已為您載入 ${mainPolicies.length} 份主約保單${mainPolicies.some(p => selectedCustomer.policies.filter(r => r.policyType === 'rider' && r.parentPolicyId === p.id).length > 0) ? '(含附約)' : ''},每份保單都有獨立的聊天室。\n\n💡 請選擇左側的保單開始諮詢!`
+      };
+
+      setGlobalMessages([DEFAULT_WELCOME_MESSAGE, welcomeMessage]);
     }
-  }, [documents, globalMessages]);
+  }, [selectedCustomer]);
+
+  // --- Auto-save to Firestore or localStorage ---
+  useEffect(() => {
+    // 使用 timeout 來 debounce,避免過度頻繁更新
+    const timeoutId = setTimeout(async () => {
+      if (currentUser && !selectedCustomer) {
+        // 使用者已登入,同步到 Firestore
+        try {
+          // 同步所有文件到 Firestore
+          for (const doc of documents) {
+            await saveUserDocument(currentUser.uid, doc);
+          }
+          console.log('✅ 已同步', documents.length, '份文件到 Firestore');
+        } catch (error) {
+          console.error('❌ 同步到 Firestore 失敗:', error);
+        }
+      } else if (!currentUser && !selectedCustomer) {
+        // 未登入,使用 localStorage
+        const docsToSave = documents.map(doc => ({
+          ...doc,
+          fileUrl: '' // Clear blob URL for persistence
+        }));
+
+        const dataToSave = {
+          documents: docsToSave,
+          globalMessages
+        };
+
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(dataToSave));
+        } catch (e) {
+          console.error("Storage quota exceeded or error", e);
+        }
+      }
+    }, 1000); // 1 秒後執行,避免過度頻繁更新
+
+    return () => clearTimeout(timeoutId);
+  }, [documents, globalMessages, currentUser, selectedCustomer]);
 
   // --- End Persistence Logic ---
 
   const activeDocument = documents.find(d => d.id === activeDocId) || null;
   const displayMessages = activeDocument ? activeDocument.chatHistory : globalMessages;
-  const currentSuggestedQueries = activeDocument?.suggestedQuestions && activeDocument.suggestedQuestions.length > 0
-    ? activeDocument.suggestedQuestions
-    : SAMPLE_QUERIES;
+
+  // 建議問題優先順序: 1. 最新 AI 回覆的建議 2. 文件的建議 3. 通用建議
+  const getLatestSuggestions = () => {
+    // 找到最新的 AI 回覆訊息
+    const latestAIMessage = [...displayMessages].reverse().find(msg => msg.role === 'model');
+
+    // 優先使用最新 AI 回覆的建議問題
+    if (latestAIMessage?.suggestedQuestions && latestAIMessage.suggestedQuestions.length > 0) {
+      return latestAIMessage.suggestedQuestions;
+    }
+
+    // 其次使用文件的建議問題
+    if (activeDocument?.suggestedQuestions && activeDocument.suggestedQuestions.length > 0) {
+      return activeDocument.suggestedQuestions;
+    }
+
+    // 最後使用通用建議問題
+    return SAMPLE_QUERIES;
+  };
+
+  const currentSuggestedQueries = getLatestSuggestions();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -216,12 +395,22 @@ const ChatInterface: React.FC = () => {
     }
   };
 
-  const removeDocument = (id: string, e: React.MouseEvent) => {
+  const removeDocument = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const docToRemove = documents.find(d => d.id === id);
+
+    if (!docToRemove) return;
+
+    // 確認刪除
+    const confirmed = window.confirm(`確定要刪除「${docToRemove.name}」嗎?`);
+    if (!confirmed) return;
+
+    // 釋放 blob URL
     if (docToRemove?.fileUrl) {
       URL.revokeObjectURL(docToRemove.fileUrl);
     }
+
+    // 更新狀態
     setDocuments(prev => {
       const newDocs = prev.filter(d => d.id !== id);
       if (id === activeDocId) {
@@ -229,6 +418,16 @@ const ChatInterface: React.FC = () => {
       }
       return newDocs;
     });
+
+    // 如果使用者已登入,從 Firestore 刪除
+    if (currentUser) {
+      try {
+        await deleteUserDocument(currentUser.uid, id);
+        console.log('✅ 已從 Firestore 刪除文件:', docToRemove.name);
+      } catch (error) {
+        console.error('❌ 從 Firestore 刪除文件失敗:', error);
+      }
+    }
   };
 
   const handleSend = async (text: string) => {
@@ -273,12 +472,19 @@ const ChatInterface: React.FC = () => {
 
     const aiResponse = await generateClaimAdvice(text, contextText, mode);
 
+    console.log('🤖 AI 回應:', {
+      text: aiResponse.text?.substring(0, 50),
+      suggestedQuestions: aiResponse.suggestedQuestions,
+      hasSuggestions: !!aiResponse.suggestedQuestions && aiResponse.suggestedQuestions.length > 0
+    });
+
     const modelMsg: Message = {
       id: (Date.now() + 1).toString(),
       role: 'model',
       text: aiResponse.text,
       guidance: aiResponse.guidance,
-      structuredData: aiResponse.structuredData
+      structuredData: aiResponse.structuredData,
+      suggestedQuestions: aiResponse.suggestedQuestions
     };
 
     if (activeDocument) {
@@ -591,20 +797,19 @@ const ChatInterface: React.FC = () => {
         {/* Input Area */}
         <div className="p-6 bg-gradient-to-t from-white via-white to-transparent">
           <div className="max-w-4xl mx-auto">
-            {displayMessages.length <= 1 && (
-              <div className="flex gap-3 overflow-x-auto pb-6 scrollbar-hide justify-center px-4">
-                {currentSuggestedQueries.map((q, i) => (
-                  <button
-                    key={i}
-                    onClick={() => handleSend(q)}
-                    title={q}
-                    className="flex-shrink-0 whitespace-nowrap px-6 py-3 bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 text-base rounded-full transition-colors shadow-sm max-w-[200px] truncate"
-                  >
-                    {q}
-                  </button>
-                ))}
-              </div>
-            )}
+            {/* 建議問題 - 持續顯示 */}
+            <div className="flex gap-3 overflow-x-auto pb-6 scrollbar-hide justify-center px-4">
+              {currentSuggestedQueries.map((q, i) => (
+                <button
+                  key={i}
+                  onClick={() => handleSend(q)}
+                  title={q}
+                  className="flex-shrink-0 whitespace-nowrap px-6 py-3 bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 text-base rounded-full transition-colors shadow-sm max-w-[200px] truncate"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
 
             <div className="relative shadow-xl rounded-3xl border flex flex-col border-gray-200 bg-white">
 

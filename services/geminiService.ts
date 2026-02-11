@@ -6,7 +6,18 @@ import { StructuredResponse } from "../types";
 const USE_PROXY = !import.meta.env.VITE_USE_LOCAL_API;
 
 // Only used for local testing if USE_PROXY is false
+// TEMPORARY: For debugging, you can hardcode your API key here
+const TEMP_API_KEY = ''; // Paste your API key here temporarily for testing
 const localApiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
+
+// Debug: Log environment variables (remove in production)
+console.log('🔍 Environment Check:', {
+  USE_PROXY,
+  VITE_USE_LOCAL_API: import.meta.env.VITE_USE_LOCAL_API,
+  hasApiKey: !!localApiKey,
+  apiKeyPrefix: localApiKey ? localApiKey.substring(0, 10) + '...' : 'MISSING',
+  usingTempKey: !!TEMP_API_KEY
+});
 
 type AnalysisMode = 'single' | 'multi' | 'general';
 
@@ -94,7 +105,7 @@ export const generateClaimAdvice = async (
   query: string,
   contextText: string = "",
   mode: AnalysisMode = 'general'
-): Promise<{ text: string; guidance: string[]; structuredData?: StructuredResponse }> => {
+): Promise<{ text: string; guidance: string[]; structuredData?: StructuredResponse; suggestedQuestions?: string[] }> => {
 
   let systemInstruction = "";
 
@@ -133,15 +144,16 @@ export const generateClaimAdvice = async (
        - **路徑 B (資訊充足 - 進行分析)**：將 status 設為 "analysis"。
 
     **JSON 回覆格式要求**：
-    請務必回傳合法的 JSON 物件。格式如下：
+    請務必回傳合法的 JSON 物件。**每個回覆都必須包含 suggested_questions 欄位**。格式如下：
 
     若為 **路徑 A (需要追問)**：
     {
       "status": "clarification",
-      "response": "一段文字，解釋需要哪些額外資訊。",
+      "response": "一段文字,解釋需要哪些額外資訊。",
       "follow_up": "一句簡短、明確的問句",
       "checklist": [],
-      "key_points": []
+      "key_points": [],
+      "suggested_questions": ["相關問題1", "相關問題2", "相關問題3"]
     }
 
     若為 **路徑 B (進行分析)**：
@@ -151,8 +163,15 @@ export const generateClaimAdvice = async (
       "checklist": ["建議步驟1", "建議步驟2"],
       "key_points": ["重點1", "重點2"],
       "warning": "除外責任或注意事項",
-      "original_terms": "引用來源文字"
+      "original_terms": "引用來源文字",
+      "suggested_questions": ["後續問題1", "後續問題2", "後續問題3"]
     }
+
+    **【必填】suggested_questions 欄位要求**：
+    1. **必須生成 3 個問題**,不可省略此欄位
+    2. 問題應基於當前對話內容,引導使用者深入探討
+    3. 每個問題限制在 12 個中文字以內
+    4. 問題要具體實用,例如："骨折未住院有賠嗎？"、"理賠金額如何計算？"、"等待期有多久？"
   `;
 
   try {
@@ -183,17 +202,28 @@ export const generateClaimAdvice = async (
       follow_up: jsonRes.follow_up
     };
 
+    // 注意: AI 回傳的是 suggested_questions (底線),需要轉換為 suggestedQuestions (駝峰式)
+    const suggestedQuestions = jsonRes.suggested_questions || jsonRes.suggestedQuestions || [];
+
+    console.log('📝 建議問題轉換:', {
+      raw_suggested_questions: jsonRes.suggested_questions,
+      raw_suggestedQuestions: jsonRes.suggestedQuestions,
+      final: suggestedQuestions
+    });
+
     return {
       text: structuredData.response,
       guidance: structuredData.checklist || [],
-      structuredData: structuredData
+      structuredData: structuredData,
+      suggestedQuestions: suggestedQuestions
     };
 
   } catch (error: any) {
     console.error("Gemini Error:", error);
     return {
       text: "分析過程中發生錯誤 (" + (error.message || "Unknown") + ")。請稍後再試。",
-      guidance: []
+      guidance: [],
+      suggestedQuestions: []
     };
   }
 };
